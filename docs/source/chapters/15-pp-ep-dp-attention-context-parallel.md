@@ -15,7 +15,7 @@ TP 切层内矩阵，EP 切专家集合，PP 则把连续的模型层划成 stag
 
 如果只让一批输入走完整条流水线，三个 stage 只能依次工作。前段算完后等待，后段尚未收到输入也等待，这些没有有效计算的空档就是 pipeline bubble。将一批请求拆成多个 micro-batch 后，Stage 1 把 A 交给 Stage 2，便可以继续处理 B，各段逐渐同时工作。
 
-![这张图片的标题为“PP：层划分与流水线”，展示了Pipeline Parallel的运行逻辑，这是大规模分布式并行的推理技术。上方标注了三个GPU分别负责不同的网络层：GPU 0的Stage 1处理第1-8层，GPU 1的Stage 2处理第9-16层，GPU 2的Stage 3处理第17-24层。下方以时间片为横轴，清晰呈现了三个Stage处理微批次A、B、C、D的流程，能直观看到各阶段通过微批次并行消除流水线气泡，逐步同时开展工作的状态，对应文档中关于Pipeline Parallel将一批请求拆分为多个微批次、填补跨层阶段等待的说明。](../assets/images/15-pp-ep-dp-attention-context-parallel/image-01.png)
+![这张图展示了PP（Pipeline Parallel，流水线并行）的层划分与流水线运行机制，将模型分为三个阶段，分别对应GPU 0/Stage 1（第1-8层）、GPU 1/Stage 2（第9-16层）、GPU 2/Stage 3（第17-24层）。图中用时间片1到6，呈现了三个Stage处理micro-batch的流水线运行过程，通过拆分微批次，各Stage可在不同时间点并行处理任务，减少了此前单批次输入时的等待空档（即pipeline bubble），对应文档中关于PP用微批次填补跨层阶段等待的相关内容，直观呈现了流水线并行的工作逻辑。](../assets/images/15-pp-ep-dp-attention-context-parallel/image-01.png)
 
 图：24 层分成三个 stage，A、B、C、D 来自不同请求。每个 stage 处理一份 micro-batch 都需要一个时间片，忽略通信与调度开销；灰色格表示填充和排空阶段的气泡。来源：Datawhale 原课程。
 
@@ -72,7 +72,7 @@ EP 会把 expert ID 分给不同 rank，每个 rank 只保存本地 expert。Rou
 
 GPU 0 将本次 token 的激活发送到 GPU 1 和 GPU 3；两张卡分别计算选中的专家，再把结果交回 GPU 0，按 router 给出的权重合并。这条教学路径中，传输的是当前激活、路由信息和专家结果，历史 KV 继续留在负责 Attention 的设备上。
 
-![这张图是专家并行（EP）的流程示意图，对应“Expert Parallel按专家分片并用双轮通信收发激活”的内容，清晰展示了EP的三个核心步骤：①分发：GPU 0获取token与路由信息，选定要计算的专家E2、E7，向GPU 1和GPU 3发送激活；②专家计算：GPU 1选中的E2/E3、GPU 3选中的E6/E7完成对应专家计算，GPU 2的E4/E5未被选中，未参与计算；③合并：GPU 1、GPU 3将计算结果传回GPU 0，GPU 0按路由权重合并结果，恢复token输出。](../assets/images/15-pp-ep-dp-attention-context-parallel/image-02.png)
+![这张图展示了Expert Parallel（EP，专家并行）的运行流程，对应大规模分布式并行中的专家分片计算逻辑，分为三个核心步骤：第一步是分发，GPU 0持有token与路由信息，选择了E2、E7专家，将激活内容分别发送给GPU 1和GPU 3；第二步是专家计算，GPU 1被分配到的E2/E3、GPU 3被分配到的E6/E7中，仅选中的E2、E7会完成对应计算，未选中的GPU 2则无需参与本次计算；第三步是合并，GPU 0接收GPU 1和GPU 3返回的计算结果，按路由权重合并，最终恢复token输出，和文档中描述的专家分片双轮通信逻辑完全对应。](../assets/images/15-pp-ep-dp-attention-context-parallel/image-02.png)
 
 图：E2、E7 分别位于 GPU 1、GPU 3，结果回到 GPU 0 恢复 token 输出。来源：Datawhale 原课程。
 
@@ -263,11 +263,11 @@ Prefill 最容易遗漏的是 CPU 提交顺序。Normal dispatch 可能等计数
 | Decode：TBO 256 与无 TBO 256 | 每卡总 token 数相同 | 无 TBO 的 GEMM 受益于更大的单次 batch，但未被隐藏的通信延长了执行时间。 |
 | Decode：TBO 256 与无 TBO 128 | 单次 kernel 的有效 batch 均为 128 | 图中缩放后的计算时间接近，主要差异落在未被重叠的通信上。它用于区分批量效率与通信重叠，不能直接比较为相同请求量的服务吞吐。 |
 
-![这是一张名为《TBO Ablation (Prefill)》的柱状对比图，用于展示Prefill阶段不同设置下各环节的平均耗时情况。图例以三种颜色区分三组设置：绿色代表“TBO +16k tok/device”，橙色代表“TBO +8k tok/device”，蓝色代表“No TBO +8k tok/device”。纵轴为系统各环节类别，包含Overall、Dispatch Barrier、各核心模块及内核等，横轴为每层的缩放平均耗时，单位是毫秒，数值范围覆盖0至70。该图的核心对比是三组设置在不同环节的耗时差异，其中Overall栏的蓝色条长度显著远长于绿色和橙色条，是突出的关键对比部分，且与文档中Prefill的batch与kernel时间对照的内容直接对应。](../assets/images/15-pp-ep-dp-attention-context-parallel/image-08.png)
+![该图片是LLM推理引擎相关的Prefill阶段的对照柱状图，图标题为TBO Ablation (Prefill)，横轴为单位层的缩放平均时间，单位是ms，纵轴为不同的计算模块分类。图中用三种颜色的柱状分别代表“TBO + 16k tok/device”“TBO + 8k tok/device”“No TBO + 8k tok/device”三种设置，其中“Overall”类别下，无TBO + 8k tok/device的对应时间远高于两种TBO设置，直观呈现了不同设置下Prefill阶段各计算模块的耗时差异。](../assets/images/15-pp-ep-dp-attention-context-parallel/image-08.png)
 
 图：Prefill 的 batch 与 kernel 时间对照。横轴为原文的 “Scaled Mean Time (ms) per Layer”；TBO 16K 与无 TBO 8K 的单次 kernel 有效 batch 相同。来源：LMSYS，2025 年 5 月 5 日。
 
-![这张图片是标题为“TBO Ablation (Decode)”的条形对比图，用于展示不同配置下各环节的每层缩放平均耗时情况。图中对比了三类配置的指标：绿色代表“TBO + 256 tok/device”，橙色代表“No TBO + 256 tok/device”，蓝色代表“No TBO + 128 tok/device”。横轴为“Scaled Mean Time(ms)per Layer”，纵轴是不同的功能类别，包含Overall、Dispatch、Combine、MoE、Attention Core、GEMM、Other Kernels、Launch Overhead这些环节。整体来看，不同配置下各环节的耗时存在明显差异，能够对应文档中对Decode阶段两种条件下耗时对比的相关说明。](../assets/images/15-pp-ep-dp-attention-context-parallel/image-09.png)
+![这张图片是标题为“TBO Ablation (Decode)”的条形对比图，用于展示不同条件下的Scaled Mean Time(ms) per Layer的对照结果。图中设置了三类对比项，分别为绿色代表的“TBO + 256 tok/device”、橙色代表的“No TBO + 256 tok/device”，以及蓝色代表的“No TBO + 128 tok/device”。图表纵轴为类别，涵盖Overall、Dispatch、Combine、MoE、Attention Core等多个与LLM解码相关的模块，横轴为每层的缩放平均时间。从条形长度可见，蓝色“No TBO + 128 tok/device”的Overall耗时最长，而绿色“TBO”方案在多数模块的耗时均短于无TBO的对应方案，符合上下文对Decode阶段两种条件下耗时对比的描述。](../assets/images/15-pp-ep-dp-attention-context-parallel/image-09.png)
 
 图：Decode 在总 batch 相同和单次 kernel 有效 batch 相同两种条件下的对照。横轴同样是 “Scaled Mean Time (ms) per Layer”。原文没有交代两图的缩放公式，各项时间又存在重叠，因此不能把图上值直接当作原始逐层延迟，或将所有条形相加当作整层延迟。来源：LMSYS，2025 年 5 月 5 日。
 
@@ -388,7 +388,7 @@ README 的 `configs/triton_version/` 是占位写法。实际文件名还包含�
 
 先算一笔只包含有效 KV 数据的教学账。假设有 4 张 GPU、请求 A～D，每个请求的完整 KV 为 1 GB，原 TP 路径会在每张卡保存这四份完整历史；改用 DPA 后，每张卡可以独立完成分配给自己的 Attention。这里比较的是复制缓存的路径，不能套到 KV 已被均匀分片的普通 TP 上。
 
-![这张图展示了DP Attention的存储优化方案，对比原方案与DP Attention的KV缓存存储区别。原方案中，4张GPU（GPU 0到3）都完整保存了A、B、C、D四个请求的KV数据，总存储量达16 GB，存在大量重复存储。采用DP Attention后，4张GPU分别仅保存各自对应的请求KV数据，即GPU 0存A、GPU 1存B、GPU 2存C、GPU 3存D，总存储量降至4 GB，释放了冗余的存储空间，契合上下文提到的DP Attention减少重复缓存、降低KV存储占用的相关内容。](../assets/images/15-pp-ep-dp-attention-context-parallel/image-11.png)
+![这张图展示了DP Attention与原方案在KV存储上的差异，对比针对4个请求A、B、C、D和4张GPU的场景。原方案中，每张GPU都完整保存了所有4个请求的KV，总KV占用量为16GB；采用DP Attention后，GPU 0、1、2、3分别仅对应保存请求A、B、C、D的KV，其余GPU位置为空，总KV占用量降至4GB，释放了重复副本占用的存储空间，体现了DP Attention按不同请求将KV分流存储、减少冗余的优势。](../assets/images/15-pp-ep-dp-attention-context-parallel/image-11.png)
 
 图：相同四个请求的 KV 从每卡各存一份，变为 GPU 0～3 分别保存 A～D。总有效 KV 从 16 GB 变为 4 GB，原来三个重复副本占据的空间被释放。来源：Datawhale 原课程。
 

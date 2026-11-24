@@ -496,7 +496,7 @@ PyTorch Chrome trace 可用 [Perfetto](https://ui.perfetto.dev/) 或 Chrome 的 
 
 图：CPU 提交与 GPU 执行的时间线。虚线连接提交与对应 kernel；这是教学示意，不代表实测数据。
 
-![这是一张标题为“Trace：时间与执行”的教学示意时间线图，用于解释CPU与GPU的任务执行关联，非实测数据。图的横轴为时间，范围从0到12，纵轴分为CPU thread、GPU stream 0、GPU stream 1三个轨道。CPU thread轨道有两个带箭头的提交事件，分别为Launch A、Launch B，其中Launch A在时间约2的位置指向GPU stream 0的Kernel A，Launch B在时间约4的位置指向GPU stream 1的Kernel B。Kernel A的结束时间与Kernel B的起始时间存在重叠，GPU stream 0的时间线中，Kernel A结束后存在一段空隙，空隙后还有三个标记为“重复”的“r”标识。该图对应文档中说明的“读Trace要结合执行依赖”的内容，以直观方式展现CPU提交与GPU kernel的对应及执行时序关系。](../assets/images/24-profiling/image-01.png)
+![这张是用于教学示意的CPU提交与GPU执行时间线，并非实测数据。图中横轴为时间，范围从0到12，分为CPU thread、GPU stream 0、GPU stream 1三个轨道。CPU thread的两个任务Launch A、Launch B，分别通过虚线指向GPU stream 0的Kernel A，以及GPU stream 1的Kernel B，Kernel A与Kernel B存在执行重叠。GPU stream 0在Kernel A执行后，存在一段空隙，空隙后还有三个标注为重复的短事件r，清晰展示了CPU任务提交与GPU kernel执行的依赖、时间重叠等关联关系。](../assets/images/24-profiling/image-01.png)
 
 单个 stream 出现空隙时，还要检查其他 stream 是否工作，以及 CPU 提交、数据传输和依赖是否让后续计算等待。不同 stream 的 kernel 可以重叠执行，所有事件 duration 的总和不能直接当成请求延迟。需要确认省下的工作是否处在影响完成时间的依赖路径上。
 
@@ -514,7 +514,7 @@ PyTorch Chrome trace 可用 [Perfetto](https://ui.perfetto.dev/) 或 Chrome 的 
 
 图：从指标提出假设，再用 Trace、代码改动、Benchmark 与正确性检查完成验证。
 
-![这张图片展示的是从症状到验证的完整流程，对应文档中用Profiler解释SGLang性能时的问题排查逻辑。图中明确标注该流程在固定环境与负载下执行，流程依次为：首先基于TTFT、TPOT相关指标提出症状假设，若该假设属于重复工作类内容则需重新梳理；接着通过Trace将事件对应到具体代码；最后借助Benchmark与Tests完成验证。若验证结果不支持当前假设，则返回修正假设后重新开展流程。](../assets/images/24-profiling/image-02.png)
+![这张是标题为“从症状到验证”的流程示意图，标注有“固定环境与负载”的前提。图中展示了一套性能问题排查的闭环流程：从标注为TTFT、TPOT的“症状”入手，进而提出会进行“重复工作”的“假设”，之后通过关联“事件→代码”的“Trace”环节验证，最终经“Benchmark·Tests”开展“验证”；若该路径不支持原有假设，则会回溯至“假设”环节，进行修正后重复上述排查流程，对应文档中用Profiler进行性能调优的验证逻辑。](../assets/images/24-profiling/image-02.png)
 
 ### MoE padding 案例省掉独立执行
 
@@ -526,11 +526,11 @@ MoE 将 token 分配给 expert 后，需要把每个 expert 的工作量补齐�
 
 图：Before，main 版本。原始截图来自 BBuf 的 PR #13587，保留原始像素与标注。
 
-![这是推理引擎Profiler的性能事件时序截图，属于MoE padding调优案例的Before版本，对应上下文提及的main版本。截图中时间轴显示的时间戳范围为00:00:02 372 685 000至00:00:02 372 780 000，各性能事件以不同颜色的色块区分，其中左侧的部分事件（如`void at:...`相关）被截断，从`void moe_align_bl...`才开始显示，需结合代码diff才能对应到`sorted_ids.fill_()`操作，无法仅通过色块宽度识别相关操作，该图用于对比展示优化前后性能事件的显示差异。](../assets/images/24-profiling/image-03.png)
+![这张图片是用于LLM推理引擎性能分析的时间线截图，对应上下文提及的Profiler相关案例。图中展示了不同的函数执行事件，包含被截断显示的事件名称，比如有标注为“void at:...”“void moe_align_bl...”“void c...”等不同的函数项，各函数项有对应的色块区分，时间刻度显示上方的00:00:02相关时间戳。结合上下文可知，该截图是BBuf的PR#13587的原始内容，用来呈现MoE padding优化前后对应的函数执行事件，Before版本的选区从被截断为“void at:...”的事件开始，而After版本会直接从alignment事件开始，这类截断的事件名称需要结合代码diff才能对应到具体操作，不能仅通过色块像素宽度识别。](../assets/images/24-profiling/image-03.png)
 
 图：After，PR 版本。来源同上。
 
-![这张图片是性能追踪工具的时间轨迹可视化界面，展示了不同时间区间内的内核函数执行块。左侧（对应文档中Before阶段）的轨迹包含被截断名称的事件，如`void...`和`void moe_align_bl...`等执行块；右侧（对应After阶段）的轨迹直接从对齐类事件`void moe_align_bl...`开始，省去了了截断的中间步骤。该可视化直观呈现了MoE padding优化前后的执行路径变化，优化后对应局部路径的耗时出现下降，与文档中耗时下降约1.310μs、降幅约16.7%的性能调优结论相符，能够辅助理解该推理引擎的性能提升效果。](../assets/images/24-profiling/image-04.png)
+![这张图片是关于MoE padding优化的性能分析截图，展示了不同函数的执行时段，对应文档中MoE padding可省掉独立执行的调优内容。截图里的选区标注为对比前后的局部执行路径耗时，Before对应带截断名称的事件，After直接从alignment事件开始，两者时长分别为7.854μs和6.544μs，耗时下降约1.310μs，降幅达16.7%。图中不同颜色块对应不同函数，部分函数名因画面截断显示不全，该图片直观呈现了此次调优带来的性能提升效果。](../assets/images/24-profiling/image-04.png)
 
 Before 的选区从被截断为 `void at:...` 的事件开始，之后才是 `void moe_align_bl...`；After 直接从 alignment 事件开始。截断名称需要结合 diff 才能对应到 `sorted_ids.fill_()`，不能只凭色块像素宽度识别操作。原图选区分别标为 7.854 μs 和 6.544 μs，差约 1.310 μs，即这段局部路径耗时下降约 16.7%。
 
@@ -584,7 +584,7 @@ PR 正文另附一次 GSM8K 测试，实际完成 1,319 道题，accuracy 为 0.
 
 Prefill 原图把计算标为 108 SM、通信标为 24 SM。两份微批的 Attention、共享专家和路由专家计算，与另一微批的 dispatch／combine 交错；箭头表示数据依赖。相同微批的专家 GEMM 仍须等 dispatch 数据就绪，后续消费者也须等 combine 完成。
 
-![这张图是Prefill排程图，用于说明SGLang推理的Prefill阶段如何为计算和通信分别预留资源。图中分为上下两个区域，上方区域对应计算资源（共108 SMs），包含属于黄色micro-batch 0的ATTN、SHARED，以及属于绿色micro-batch 1的ATTN、MLP、SHARED等模块；下方区域对应通信资源（共24 SMs），包含属于两个微批的COMBINE、DISPATCH模块。图中的箭头标注了数据依赖关系，相同微批的专家GEMM需等待对应dispatch数据就绪，后续相关操作也需等待combine完成，符合文档中关于该阶段计算与通信交错、微批数据依赖的描述，其中ATTN指MLA与MoE路由门，SHARED指共享专家。](../assets/images/24-profiling/image-05.jpg)
+![该图是标注了Prefill排程的示意图，分为Computation与Communication两行，Computation行标注占用108个SMs，Communication行标注占用24个SMs。图中用黄色代表micro-batch 0，绿色代表micro-batch 1，其中黄色ATTN对应micro-batch 0的注意力计算，绿色ATTN对应micro-batch 1的注意力计算，ATTN包含MLA与MoE路由门，SHARED为共享专家。箭头展示了数据依赖关系，相同微批的专家GEMM需等待dispatch数据就绪，后续消费者需等待combine完成，Computation行的内容与Communication行的内容交错排布。](../assets/images/24-profiling/image-05.jpg)
 
 图：Prefill 排程原图。黄色为 micro-batch 0，绿色为 micro-batch 1；ATTN 包含 MLA 与 MoE routing gate，SHARED 为共享专家。108／24 是作者给出的计算与通信资源安排，图形宽度不是实测时间。
 
@@ -600,7 +600,7 @@ Trace 中还能找到 clean_and_count_expert、get_fused_mapping、expand_to_fus
 
 Decode 原图把计算标为 132 SM，通信在途窗口标为 0 SM。README 的解释是：RDMA 消息发出后，让出 GPU SM，继续执行独立计算；在消费通信结果前，再等待 All-to-All 完成。这里的 0 SM 描述在途窗口，发送、接收和结果整理仍有自己的 GPU 工作。
 
-![这张图是SGLang推理引擎中Decode排程的示意，对应解码阶段的计算与通信安排。图中分为上下两个部分，上方为“Computation”计算部分，占132个SM，包含对应两个微批次的SHARED、ATTN-0、MLP、ATTN-1等模块；下方为“Communication”通信部分，占0个SM，包含对应两个微批次的DISPATCH、COMBINE模块，标注说明通信条并非持续占用SM的CUDA kernel，发送、接收及结果整理期间仍有对应的GPU工作，且明确了各缩写对应的功能含义，辅助说明解码阶段的网络在途等待相关的性能逻辑。](../assets/images/24-profiling/image-06.jpg)
+![这张图是SGLang中Decode排程的时序示意图，分为上下两行，分别标注为“Computation（132 SMs）”和“Communication（0 SMs）”，黄色部分代表micro-batch 0，绿色部分代表micro-batch 1。上行的计算流程依次包含SHARED、ATTN-0、MLP、ATTN-1等模块，下行的通信流程则对应DISPATCH、COMBINE模块，通信环节标注使用0 SM。图中还补充了各模块的说明：ATTN-0指结合All-to-All前后的MLA上下投影等操作，ATTN-1是核心注意力、注意力输出投影与MoE路由门，SHARED指共享专家，直观呈现了该场景下计算与通信环节的对应关系，符合上下文对Decode排程不持续占用SM的解释。](../assets/images/24-profiling/image-06.jpg)
 
 图：Decode 排程原图。通信条表示逻辑传输窗口，不能把整条都当成持续占用 SM 的 CUDA kernel，也不能理解为整次通信不使用 GPU。两种颜色区分微批，箭头表达不同阶段的数据依赖。
 

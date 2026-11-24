@@ -30,7 +30,7 @@ $$(q_{t,i}^C)^{\mathsf T}(W_i^{UK}c_s^{KV})=\big((W_i^{UK})^{\mathsf T}q_{t,i}^C
 
 GQA 只有在 TP 超过 KV head 总数后才触发 head 复制；而 MLA 的 $(c_t^{KV},k_t^R)$ 本身就是全 head 共享的单一潜向量，无法按 head 维继续切分。在普通 TP 路径中，组内每张 GPU 都会保存同一请求完整的一份压缩潜向量：
 
-![这张图展示了GQA与MLA在张量并行（TP）场景下的缓存共享差异。左侧为带8组KV的GQA架构：当TP=8时，各GPU分别保存独有的KV缓存；当TP扩展至16时，相邻GPU会复制同一KV头的缓存，出现缓存重复的情况。右侧为MLA架构，采用共享压缩缓存设计：无论TP为8还是16，各GPU均保存同一共享压缩缓存，不会出现缓存复制的问题，契合上下文提及的MLA无法按head维度拆分、无需额外缓存复制的特性。](../assets/images/20-mla-swa-gated-deltanet/image-01.png)
+![这张图展示了GQA与MLA在TP（张量并行）配置下的缓存共享差异，与上下文提到的注意力架构内容对应。左侧为采用8组KV的GQA，当TP从8扩展到16时，相邻GPU会复制同一份KV头缓存，比如GPU0和GPU1都保存相同的KV0；右侧为采用共享压缩缓存的MLA，无论TP是8还是16，每组GPU都会保存同一请求的同一份压缩缓存，不会出现按头维拆分复制的情况，直观体现了二者在并行扩展时缓存机制的区别，契合上下文关于MLA无法按头切分、需保留完整共享潜向量的说明。](../assets/images/20-mla-swa-gated-deltanet/image-01.png)
 
 图：左侧采用 8 个 KV head 的 GQA，从 TP8 增至 TP16 后相邻 rank 复制同一个 head；右侧采用复制 latent cache 的 MLA，增加 TP 后每卡仍保存同一请求的压缩状态。图中“共享”描述模型中多个 Query 对同一缓存的使用关系；跨 GPU 的方框仍是各自显存里的副本。来源：Datawhale 原课程，结构背景见 [GQA 论文](https://arxiv.org/abs/2305.13245)与 [DeepSeek-V2 技术报告](https://arxiv.org/html/2405.04434v5#S2.SS1)。
 

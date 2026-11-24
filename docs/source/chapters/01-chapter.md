@@ -72,7 +72,7 @@ Decode 每生成一个新 token 都要读取上文。KV Cache 把各层已算好
 
 Tokenizer 负责把字符串切成 token，再按词表映射成整数 ID。它决定“文本如何编码”，但不参与 Transformer 内部的浮点计算。模型接收形如 `[B, T]` 的 ID 张量，其中 `B` 是批大小，`T` 是序列长度。
 
-![这张图展示了文本输入从字符到模型可处理向量的转换流程，对应文档中关于大模型文本编码与嵌入的内容。图中左侧是代表字符“猫”的Character层，经“tokenize”操作得到对应token ID 1234；该ID会作为输入，在Embedding Table（嵌入表，即Lookup table）中完成“lookup”查询，获取到对应维度为d_model的向量，最终形成模型可处理的张量形式，直观呈现了文档中“文本先编码为token ID，再通过embedding查表得到连续向量”的过程。图下方还标注了四个不同的层的对应颜色，辅助理解各环节的组件区分。](../assets/images/01-chapter/image-02.png)
+![这张图配合文档解释了LLM推理中从文本到模型输入的编码过程：左侧是字符“猫”，经Tokenizer处理后映射为token ID 1234；接着该ID会在Embedding表（形状为词表大小×模型维度）中执行查表操作；最终从该表中取出对应行的数值，得到维度为模型维度的向量，完成从离散ID到模型可处理连续向量的转换，这一过程对应文档所述的文本转token ID、再经embedding查表得到连续向量的流程。](../assets/images/01-chapter/image-02.png)
 
 *文本先被编码为 token ID，再通过 embedding 查表得到连续向量。图片来自 Zero to SGLang 原课程。*
 
@@ -120,7 +120,7 @@ $$U_l=H_l+\operatorname{Attention}(\operatorname{Norm}(H_l))$$
 
 $$H_{l+1}=U_l+\operatorname{MLP}(\operatorname{Norm}(U_l))$$
 
-![这张图片展示了Pre-Norm Transformer块的结构流程，与文档中描述的公式完全对应。图中从输入x开始，依次经过Norm₁、Attention计算，接着形成了第一条残差支路的计算结果h = x + Attention(Norm₁(x))，之后经过Norm₂和MLP，还有第二条残差支路指向中间结果，最终得到最终输出。它直观呈现了文档提到的“Attention与MLP各有一条残差支路”的核心内容，清晰展示了该Transformer块的运算逻辑与残差连接设计。](../assets/images/01-chapter/image-03.png)
+![这张图片是Pre-Norm Transformer块的结构流程图，对应文档中该类模块的公式与支路说明。图中清晰展示了该模块的运算流程：输入x先经Norm₁归一化，再输入Attention注意力模块，同时存在第一条残差支路（First Bypass）直接将x与Attention模块的输出相加，得到h = x + Attention(Norm₁(x))。之后该结果h经Norm₂归一化后输入MLP模块，还设有第二条残差支路（Second Bypass），将h与MLP模块的输出相加，完成该模块的核心计算流程，对应文档里“Attention与MLP各有一条残差支路”的描述。](../assets/images/01-chapter/image-03.png)
 
 *Pre-Norm Transformer block：Attention 与 MLP 各有一条残差支路。图片来自 Zero to SGLang 原课程。*
 
@@ -134,7 +134,7 @@ $$Z=\operatorname{FinalNorm}(H_N),\qquad L=ZW_{\mathrm{vocab}}^{\mathsf T}$$
 
 于是 logits $L$ 的形状为 `[B, T, vocab_size]`。每个位置都有一组覆盖整个词表的原始分数；这些数可以为负，也不要求和为 1，所以还不是概率。
 
-![这张图片对应文档中关于大模型推理的内容，直观展示了从输入序列生成下一个token的过程：上方标注已处理的输入序列，指向第t个位置，说明此处对应要提取的logits；下方展示该位置生成的logits，是词汇表中所有token的得分，其中“run”得分5.8为最高，同时明确说明此时的logits未经过归一化，虽有最高得分但不是概率，还补充了logits的正负性、训练和推理中对logits的处理相关信息，呼应文档中关于LM Head将隐藏态映射为词表候选token logits的内容。](../assets/images/01-chapter/image-04.png)
+![这张图片是对LLM推理中Logits生成过程的可视化说明。图中展示输入序列处理到第t个token的位置，对应生成形状为长度等于词表大小的Logits张量，每个数值是对应词表内token的原始分数，这些分数可正可负，未经过归一化处理。图中高亮的“run”对应分数5.8是当前位置的最高分数，但它并非概率值，若要得到可用概率，需要后续通过Softmax进行归一化。此外还标注了该环节的作用：推理阶段需基于这些Logits取Argmax或采样，来确定下一个生成的token。](../assets/images/01-chapter/image-04.png)
 
 *Final norm 与 LM Head 把 hidden state 映射成词表中每个候选 token 的 logits。图片来自 Zero to SGLang 原课程。*
 
@@ -163,7 +163,7 @@ Top-k 与 Top-p 的共同点是去掉低概率长尾，再对保留候选重新�
 
 ## 一次 forward 只预测一步，生成靠循环完成
 
-![这张图对应大模型自回归生成的过程，清晰展示了一次forward循环的完整流程：初始的logits（维度为[B, T, V]）会取最后部分的结果输入采样策略环节，该环节采用top-k或top-p的方式，选出下一个token next_id（为单个token），再将其作为新序列加入后形成维度为[B, T+1]的序列，随后开启下一轮自回归的forward过程。整个循环会运行，直至遇到停止条件，如到达EOS标记、达到最大新token数、达到最大上下文长度等，循环终止后返回完整生成的序列，匹配了上下文所描述的自回归生成每轮仅预测一个token、靠循环完成的核心逻辑。](https://feishu.cn/file/UanPbwGcno63u4xe2XMmPKkcyjh)
+![这张图展示了大模型自回归生成的过程，对应文档中描述的“一次forward只预测一步，生成靠循环完成”的内容。图中以流程闭环呈现：已有logits经采样策略（T/top-k/top-p）选出1个next_id，新生成的token会追加到序列中，作为新一轮的输入，以此循环执行自回归推理；当满足停止条件，如到达EOS、达到最大新token数或达到最大上下文长度时，生成过程终止，输出完整序列，与文档中自回归生成的步骤逻辑完全对应。](../assets/images/01-chapter/image-05.png)
 
 *自回归生成：每轮用已有上下文预测一个 token，再把它带入下一轮。图片来自 Zero to SGLang 原课程。*
 

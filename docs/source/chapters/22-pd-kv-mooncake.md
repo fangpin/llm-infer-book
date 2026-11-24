@@ -113,7 +113,7 @@ TTFT = 客户端与网关开销 + 分词与模板处理
 
 《SGLang PD Disaggregation (Open Source)》把前面的交接条件落实为两端的队列：P 端先确认握手和目标容量准备完成，再安排 Prefill；D 端收齐 KV 后，才把请求交给 Decode。下图和队列说明依据该设计稿，不能直接当作所有当前后端的完整运行路径。
 
-![这张是对应PD分离与跨节点KV调度设计的时序交互图，展示了Prefill Server（预填服务端）和Decode Server（解码服务端）的交互流程。Sender创建后，Prefill Server向Decode Server发送Handshake信号，此时Receiver已创建；之后D端（Decode Server侧）完成Pre-allocation预分配并通过Notify通知Prefill Server；接着Prefill Server执行Prefill forward，再通过sender.send发起KV-Transfer，将KV传输至Decode Server，待receive done后，Decode Server开始执行Decode forward。该图源自SGLang PD公开设计稿，和文档所述的握手与预分配先于Prefill的流程内容对应。](../assets/images/22-pd-kv-mooncake/image-05.png)
+![这是LLM推理引擎相关的交互时序图，涉及Prefill Server与Decode Server两个主体。图中展示了两者的交互流程：Sender创建后，Prefill Server向Decode Server发起Handshake；Decode Server端Receiver创建后执行Pre-allocation，并通过Notify通知Prefill Server；随后Prefill Server执行Prefill forward，调用sender.send后，通过KV-Transfer向Decode Server传输KV数据；Decode Server接收完成（receive done）后，启动Decode forward流程，该流程对应的是SGLang PD公开设计稿的相关交互逻辑，体现了握手与预分配先于Prefill的架构设计规则。](../assets/images/22-pd-kv-mooncake/image-05.png)
 
 图：Sender 与 Receiver 建立握手后，D 端预分配接收空间并通知 P；P 执行 Prefill 并发送 KV，D 确认接收完成后开始 Decode。来源：SGLang PD 公开设计稿；原图仅增加白色底色以保证文字可读，箭头间距不表示实测时间。
 

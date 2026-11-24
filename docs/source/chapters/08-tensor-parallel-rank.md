@@ -93,7 +93,7 @@ NCCLWrapper 会分配并注册一块 symmetric memory。all-reduce 张量不超�
 
 Attention 的 QKV projection 沿输出维切分，每个 Rank 只计算本地 heads；Attention 输出进入按输入维切分的 O projection，各 Rank 得到同形状的局部和，再用 all-reduce 恢复完整 hidden state。MLP 同理：gate/up projection 沿中间维切分，激活保留分片，down projection 做 all-reduce。MoE 的专家中间维也按 TP 切分，最终 hidden state 做 SUM。
 
-![这张图片展示了Tensor Parallel（TP）层内的通信流程，内容和上下文描述的Tensor Parallel计算逻辑对应。图中有GPU 0和GPU 1两个计算节点，每个节点的Attention分片数据先经过All-Reduce操作，再经过FFN分片处理，之后再次经过All-Reduce操作，最终输出数据传递给下一层，直观呈现了上下文提到的多Rank协同计算时的层内通信流程，清晰对应Tensor Parallel在注意力与FFN模块里的分片、聚合操作逻辑。](../assets/images/08-tensor-parallel-rank/image-02.png)
+![这张图片展示了大语言模型推理中Tensor Parallel（张量并行）的层内通信流程，对应文档中TP层的计算逻辑。图中有GPU 0和GPU 1两个运算单元，二者分别处理Attention分片任务，之后通过All-Reduce操作完成一次通信；接着各自处理FFN分片任务，再通过一次All-Reduce完成层内通信，最终将结果传递给下一层。该图直观呈现了张量并行中多GPU分片计算、通过All-Reduce协同恢复完整状态的核心流程，与文档介绍的TP层运算逻辑完全对应。](../assets/images/08-tensor-parallel-rank/image-02.png)
 
 图：常见 Transformer TP 路径在 Attention 输出投影和 FFN 输出投影后分别合并局部结果。图中两次 All-Reduce 对应前文的 O projection 与 down projection；这是层内数据关系示意，具体通信算法和融合方式由实现决定。来源：[Datawhale《Zero to SGLang》横向扩展](https://datawhalechina.github.io/zero-to-sglang/ch/part3/第4章_横向扩展.html)。
 
